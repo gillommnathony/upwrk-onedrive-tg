@@ -1,4 +1,5 @@
 .idea
 venv
+temp
 .env
 secret.json

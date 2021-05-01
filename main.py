@@ -1,5 +1,7 @@
 import logging
 import logging.config
+import ntpath
+import requests
 from telebot import TeleBot, types
 from dotenv import load_dotenv
 import os
@@ -8,7 +10,8 @@ import json
 
 load_dotenv()
 
-bot = TeleBot(os.environ.get('BOT_TOKEN'), parse_mode=None)
+token = os.environ.get('BOT_TOKEN')
+bot = TeleBot(token, parse_mode=None)
 allowed_users = os.environ.get('ALLOWED_USERS').split(':')
 secret_path = "secret.json"
 
@@ -44,7 +47,7 @@ def start(message):
                 f.write(json.dumps(access))
 
             reply_msg = "Hello\n"
-            reply_msg += "I will send a link to One Drive when I will be ready."
+            reply_msg += "I will send a link to One Drive here."
             bot.reply_to(message, reply_msg, reply_markup=None)
 
 
@@ -95,12 +98,32 @@ def send(message):
 @bot.message_handler(content_types=['document', 'photo'])
 def files(message):
     if message.from_user.username in allowed_users:
+        d_name = 'temp'
+        if not os.path.exists(d_name):
+            os.makedirs(d_name)
+
         if message.content_type == 'photo':
-            print(message.json['photo'][0]['file_id'])
-            # Document has name
-            # Photo hasn't
+            f_info = bot.get_file(message.json['photo'][-1]['file_id'])
+            f_ext = ntpath.basename(f_info.file_path).split('.')[1]
+            f_name = f"{message.date}.{f_ext}"
+
+            res = requests.get(
+                f'https://api.telegram.org/file/bot{token}/{f_info.file_path}')
+
+            fp = os.path.join(d_name, f_name)
+            with open(fp, 'wb') as f:
+                f.write(res.content)
+
         elif message.content_type == 'document':
-            print(message.document)
+            f_info = bot.get_file(message.document.file_id)
+            f_name = message.document.file_name
+
+            res = requests.get(
+                f"https://api.telegram.org/file/bot{token}/{f_info.file_path}")
+
+            fp = os.path.join(d_name, f_name)
+            with open(fp, 'wb') as f:
+                f.write(res.content)
 
 
 bot.polling()
