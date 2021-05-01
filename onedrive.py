@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import requests
 import msal
@@ -124,3 +125,27 @@ class OneDrive:
         file_data.close()
 
         return res
+
+    def create_link(self, user_id, folder_id):
+        self.auth()
+
+        url = "https://graph.microsoft.com/v1.0/users/"
+        url += f"{user_id}/drive/items/{folder_id}/createLink"
+
+        res = requests.post(
+            url,
+            data=json.dumps({
+                "type": "view",
+                "scope": "anonymous"
+            }),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.access_token}"
+            }
+        ).json()
+
+        data = False
+        if "error" not in res:
+            data = res['link']['webUrl']
+
+        return data
