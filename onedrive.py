@@ -5,6 +5,8 @@ import requests
 import msal
 import ntpath
 
+logger = logging.getLogger(__name__)
+
 
 class OneDrive:
     def __init__(self):
@@ -15,6 +17,7 @@ class OneDrive:
         self.access_token = False
 
     def auth(self):
+        logger.info("Authentication.")
         app = msal.ConfidentialClientApplication(
             self.client_id,
             authority=self.authority,
@@ -28,10 +31,11 @@ class OneDrive:
 
         if "access_token" in result:
             self.access_token = result['access_token']
+            logger.info("Access token granted.")
         else:
-            print(result.get("error"))
-            print(result.get("error_description"))
-            print(result.get("correlation_id"))
+            logger.error(result.get("error"))
+            logger.error(result.get("error_description"))
+            logger.error(result.get("correlation_id"))
 
     def get_folders(self, user_id):
         self.auth()
@@ -64,6 +68,7 @@ class OneDrive:
         return res
 
     def upload_file(self, user_id, folder_id, fp):
+        logger.info("Uploading.")
         self.auth()
 
         file_name = ntpath.basename(fp)
@@ -119,14 +124,20 @@ class OneDrive:
                     chunk_res = requests.put(
                         res['uploadUrl'], data=chunk_data,
                         headers=headers)
-                    print(chunk_res.json())
+                    logger.info(chunk_res.json())
                     i = i + 1
 
         file_data.close()
 
+        if "error" in res:
+            logger.error(res)
+        else:
+            logger.info("Data sent successfully.")
+
         return res
 
     def create_link(self, user_id, folder_id):
+        logger.info("Link creation.")
         self.auth()
 
         url = "https://graph.microsoft.com/v1.0/users/"
@@ -147,5 +158,8 @@ class OneDrive:
         data = False
         if "error" not in res:
             data = res['link']['webUrl']
+            logger.info("Link got successfully.")
+        else:
+            logger.error(res)
 
         return data
