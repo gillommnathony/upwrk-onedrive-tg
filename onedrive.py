@@ -37,6 +37,20 @@ class OneDrive:
             logger.error(result.get("error_description"))
             logger.error(result.get("correlation_id"))
 
+    def get_users(self):
+        self.auth()
+
+        url = "https://graph.microsoft.com/v1.0/users"
+
+        res = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.access_token}"
+            }
+        ).json()
+
+        return res
+
     def get_folders(self, user_id):
         self.auth()
 
@@ -66,6 +80,35 @@ class OneDrive:
         ).json()
 
         return res
+
+    def create_folder(self, user_id, folder_id, name):
+        logger.info("Creating folder.")
+        self.auth()
+
+        url = "https://graph.microsoft.com/v1.0/users/"
+        url += f"{user_id}/drive/items/{folder_id}/children"
+
+        res = requests.post(
+            url,
+            data=json.dumps({
+              "name": name,
+              "folder": {},
+              "@microsoft.graph.conflictBehavior": "rename"
+            }),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.access_token}"
+            }
+        ).json()
+
+        data = False
+        if "error" not in res:
+            data = res['id']
+            logger.info("Folder created successfully.")
+        else:
+            logger.error(res)
+
+        return data
 
     def upload_file(self, user_id, folder_id, fp):
         logger.info("Uploading.")
@@ -128,6 +171,7 @@ class OneDrive:
                     i = i + 1
 
         file_data.close()
+        os.remove(fp)
 
         if "error" in res:
             logger.error(res)
