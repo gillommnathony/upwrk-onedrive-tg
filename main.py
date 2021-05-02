@@ -1,16 +1,14 @@
 import os
-import json
 import logging
 import logging.config
 import ntpath
-import requests
 from time import time
 from telebot import TeleBot, types
 from dotenv import load_dotenv
 from onedrive import OneDrive
 from sqlite import SQLite
-from services import save_from_tg
-from settings import SECRET_PATH, ONEDRIVE_USER, ONEDRIVE_FOLDER, LOGGING_CONF
+from services import save_from_tg, create_keyboard
+from settings import ONEDRIVE_USER, ONEDRIVE_FOLDER, LOGGING_CONF
 
 
 logging.config.dictConfig(LOGGING_CONF)
@@ -27,6 +25,8 @@ S_SEND_LINK = 'Send link to photos.'
 send_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 send_markup.add(types.KeyboardButton(S_SEND_LINK))
 
+current_mg_id = None
+ondrv_folder = None
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -42,7 +42,8 @@ def start(message):
 
         res = sqlite.add_user_chat(
             message.from_user.id,
-            message.chat.id
+            message.chat.id,
+            message.chat.title
         )
 
         if res:
@@ -77,98 +78,87 @@ def stop(message):
         bot.reply_to(message, reply_msg)
 
 
-@bot.message_handler(func=lambda m: m.text == S_SEND_LINK)
-def send(message):
-    logger.info('Send function.')
-    chats = sqlite.get_user_chats(message.from_user.id)
-
-    if chats:
-        logger.info('Chats found.')
-        for f_name in os.listdir('temp'):
-            fp = os.path.join('temp', f_name)
-            img = ondrv.upload_file(
-                ONEDRIVE_USER,
-                ONEDRIVE_FOLDER,
-                fp
+@bot.callback_query_handler(lambda query: True)
+def query_text(query):
+    if query.data.split('_')[0] == 'refresh':
+        _, link_id = query.data.split('_')
+        new_keyboard = create_keyboard(sqlite, query.from_user.id, link_id)
+        try:
+            bot.edit_message_reply_markup(
+                chat_id=query.message.chat.id,
+                message_id=query.message.id,
+                reply_markup=new_keyboard
             )
-            os.remove(fp)
-            logger.info(f'Photo {f_name} uploaded and removed.')
+        except Exception as e:
+            logger.warning(e)
 
-        for chat_id in chats:
-            link = ondrv.create_link(
-                ONEDRIVE_USER,
-                ONEDRIVE_FOLDER,
-            )
-            bot.send_message(chat_id, link)
-            logger.info(f'Link sent to chat with id={chat_id}')
-
-        reply_msg = "Link sent successfully!"
     else:
-        logger.info('No chats found.')
-
-        reply_msg = "You have no chats to send photos to.\n"
-        reply_msg += "Please, at first add bot to any group "
-        reply_msg += "and write /start command."
-
-    bot.reply_to(message, reply_msg)
+        chat_id, link_id = query.data.split('_')
+        link = sqlite.get_link(link_id)
+        bot.send_message(chat_id, link)
 
 
 def file_downloader(messages):
     logger.info('FileDownloader function.')
-    mg_id = None
-    mg_chat_id = None
-    ondrv_folder = None
+    global current_mg_id
+    global ondrv_folder
 
     for message in messages:
-        print(message.date)
         if message.chat.type == "private":
             folder_name = str(message.from_user.id) + str(message.date)
-            dp = os.path.join("temp", folder_name)
+
+            dp = os.path.join("temp")
             if not os.path.exists(dp):
                 os.makedirs(dp)
 
-            if message.media_group_id is not None:
-                mg_chat_id = message.chat.id
-                if mg_id != message.media_group_id:
-                    mg_id = message.media_group_id
-                    folder_name = str(message.from_user.id) +\
-                        str(message.date)
+            if current_mg_id != message.media_group_id:
+                if message.media_group_id is not None:
+                    current_mg_id = message.media_group_id
                     ondrv_folder = ondrv.create_folder(
                         ONEDRIVE_USER, ONEDRIVE_FOLDER, folder_name)
+                    link = ondrv.create_link(ONEDRIVE_USER, ondrv_folder)
+                    link_id = sqlite.add_user_link(link)
 
-            if message.content_type == 'photo':
-                logger.info('Photo message found.')
-                f_info = bot.get_file(message.json['photo'][-1]['file_id'])
-                f_info_name = ntpath.basename(f_info.file_path)
-                f_ext = f_info_name.split('.')[1]
-                f_title = f"{int(time())}_{f_info_name.split('.')[0]}"
-                f_name = f"{f_title}.{f_ext}"
+                    test_markup = create_keyboard(
+                        sqlite, message.from_user.id, link_id)
+                    reply_msg = "Please, click button to send link to corresponding chat.\n"
+                    reply_msg += "Click refresh button if you activated bot in new chats"
 
-                fp = save_from_tg(token, f_info, f_name, dp)
-                ondrv.upload_file(
-                    ONEDRIVE_USER,
-                    ondrv_folder,
-                    fp
-                )
+                    bot.send_message(
+                        message.chat.id, reply_msg, reply_markup=test_markup)
 
-                logger.info('Photo message processed.')
+            if message.media_group_id is not None:
+                if message.content_type == 'photo':
+                    print(ondrv_folder)
+                    logger.info('Photo message found.')
+                    f_info = bot.get_file(message.json['photo'][-1]['file_id'])
+                    f_info_name = ntpath.basename(f_info.file_path)
+                    f_ext = f_info_name.split('.')[1]
+                    f_title = f"{int(time())}_{f_info_name.split('.')[0]}"
+                    f_name = f"{f_title}.{f_ext}"
 
-            elif message.content_type == 'document':
-                logger.info('Document message found.')
-                f_info = bot.get_file(message.document.file_id)
-                f_name = message.document.file_name
+                    fp = save_from_tg(token, f_info, f_name, dp)
+                    ondrv.upload_file(
+                        ONEDRIVE_USER,
+                        ondrv_folder,
+                        fp
+                    )
 
-                fp = save_from_tg(token, f_info, f_name, dp)
-                ondrv.upload_file(
-                    ONEDRIVE_USER,
-                    ondrv_folder,
-                    fp
-                )
+                    logger.info('Photo message processed.')
 
-                logger.info('Document message processed.')
+                elif message.content_type == 'document':
+                    logger.info('Document message found.')
+                    f_info = bot.get_file(message.document.file_id)
+                    f_name = message.document.file_name
 
-    if mg_chat_id is not None:
-        bot.send_message(mg_chat_id, "hello")
+                    fp = save_from_tg(token, f_info, f_name, dp)
+                    ondrv.upload_file(
+                        ONEDRIVE_USER,
+                        ondrv_folder,
+                        fp
+                    )
+
+                    logger.info('Document message processed.')
 
 
 logger.info('Bot successfully started.')

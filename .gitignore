@@ -3,4 +3,4 @@ venv
 temp
 logs
 .env
-secret.json
+*.sqlite

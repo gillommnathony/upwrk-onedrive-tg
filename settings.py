@@ -5,11 +5,12 @@ from datetime import datetime, time
 today = datetime.today()
 
 
-ONEDRIVE_USER = "aeea9409-222c-4ac8-b9c9-7a04050adfae"
-ONEDRIVE_FOLDER = "01QJJ7FGDKTUN2YFMU7RFKPT3V3L2MJO4X"
+# ONEDRIVE_USER = "aeea9409-222c-4ac8-b9c9-7a04050adfae"
+# ONEDRIVE_FOLDER = "01QJJ7FGDKTUN2YFMU7RFKPT3V3L2MJO4X"
+ONEDRIVE_USER = "b14e0b11-0a70-4575-8be2-f36615271dfb"
+ONEDRIVE_FOLDER = "014KPYZE3MHHHOGOVAVFEKJCXWK3BI6IUC"
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
-SECRET_PATH = os.path.join(PROJECT_ROOT, "secret.json")
 
 LOGGING_NAME = "info.log"
 LOGGING_DIR = os.path.join(PROJECT_ROOT, 'logs')
