@@ -4,7 +4,6 @@ import json
 import logging
 import requests
 import msal
-import ntpath
 
 logger = logging.getLogger(__name__)
 
