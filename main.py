@@ -107,10 +107,6 @@ def file_downloader(messages):
         if message.chat.type == "private":
             folder_name = str(message.from_user.id) + str(message.date)
 
-            dp = os.path.join("temp")
-            if not os.path.exists(dp):
-                os.makedirs(dp)
-
             if current_mg_id != message.media_group_id:
                 if message.media_group_id is not None:
                     current_mg_id = message.media_group_id
@@ -129,7 +125,6 @@ def file_downloader(messages):
 
             if message.media_group_id is not None:
                 if message.content_type == 'photo':
-                    print(ondrv_folder)
                     logger.info('Photo message found.')
                     f_info = bot.get_file(message.json['photo'][-1]['file_id'])
                     f_info_name = ntpath.basename(f_info.file_path)
@@ -137,11 +132,12 @@ def file_downloader(messages):
                     f_title = f"{int(time())}_{f_info_name.split('.')[0]}"
                     f_name = f"{f_title}.{f_ext}"
 
-                    fp = save_from_tg(token, f_info, f_name, dp)
+                    f = save_from_tg(token, f_info)
                     ondrv.upload_file(
                         ONEDRIVE_USER,
                         ondrv_folder,
-                        fp
+                        f_name,
+                        f
                     )
 
                     logger.info('Photo message processed.')
@@ -151,11 +147,12 @@ def file_downloader(messages):
                     f_info = bot.get_file(message.document.file_id)
                     f_name = message.document.file_name
 
-                    fp = save_from_tg(token, f_info, f_name, dp)
+                    f = save_from_tg(token, f_info)
                     ondrv.upload_file(
                         ONEDRIVE_USER,
                         ondrv_folder,
-                        fp
+                        f_name,
+                        f
                     )
 
                     logger.info('Document message processed.')

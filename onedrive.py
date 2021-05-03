@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 import requests
@@ -110,13 +111,11 @@ class OneDrive:
 
         return data
 
-    def upload_file(self, user_id, folder_id, fp):
+    def upload_file(self, user_id, folder_id, file_name, file_data):
         logger.info("Uploading.")
         self.auth()
 
-        file_name = ntpath.basename(fp)
-        file_size = os.stat(fp).st_size
-        file_data = open(fp, 'rb')
+        file_size = sys.getsizeof(file_data)
 
         if file_size < 4100000:
             # Perform is simple upload to the API
@@ -137,41 +136,39 @@ class OneDrive:
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self.access_token}"
-                }).json()
+                }
+            ).json()
 
-            with open(fp, 'rb') as f:
-                total_size = os.path.getsize(fp)
-                chunk_size = 4100000
-                chunk_num = total_size // chunk_size
-                chunk_leftover = total_size - chunk_size * chunk_num
-                i = 0
-                while True:
-                    chunk_data = f.read(chunk_size)
-                    start_index = i * chunk_size
-                    end_index = start_index + chunk_size
-                    # If end of file, break
-                    if not chunk_data:
-                        break
-                    if i == chunk_num:
-                        end_index = start_index + chunk_leftover
-                    # Setting the header with the appropriate
-                    # chunk data location in the file
-                    headers = {
-                        "Content-Length": str(chunk_size),
-                        "Content-Range":
-                            f"bytes {start_index}-{end_index-1}/{total_size}",
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.access_token}"
-                    }
-                    # Upload one chunk at a time
-                    chunk_res = requests.put(
-                        res['uploadUrl'], data=chunk_data,
-                        headers=headers)
-                    logger.info(chunk_res.json())
-                    i = i + 1
+            chunk_size = 4100000
+            chunk_num = file_size // chunk_size
+            chunk_leftover = file_size - chunk_size * chunk_num
+            i = 0
+            while True:
+                start_index = i * chunk_size
+                end_index = start_index + chunk_size - 1
+                # If end of file, break
+                if i == chunk_num:
+                    end_index = start_index + chunk_leftover
+                elif i > chunk_num:
+                    break
 
-        file_data.close()
-        os.remove(fp)
+                chunk_data = file_data[start_index:end_index]
+
+                # Setting the header with the appropriate
+                # chunk data location in the file
+                headers = {
+                    "Content-Length": str(chunk_size),
+                    "Content-Range":
+                        f"bytes {start_index}-{end_index-1}/{file_size}",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.access_token}"
+                }
+                # Upload one chunk at a time
+                chunk_res = requests.put(
+                    res['uploadUrl'], data=chunk_data,
+                    headers=headers)
+                logger.info(chunk_res.json())
+                i = i + 1
 
         if "error" in res:
             logger.error(res)
