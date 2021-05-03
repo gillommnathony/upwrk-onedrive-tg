@@ -1,32 +1,31 @@
 import os
 import logging
+import time
 import logging.config
 import ntpath
-from time import time
 from telebot import TeleBot, types
 from dotenv import load_dotenv
 from onedrive import OneDrive
-from sqlite import SQLite
+from mongo import Mongo
 from services import save_from_tg, create_keyboard
 from settings import ONEDRIVE_USER, ONEDRIVE_FOLDER, LOGGING_CONF
-
 
 logging.config.dictConfig(LOGGING_CONF)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+current_mg_id = None
+ondrv_folder = None
 
-token = os.environ.get('BOT_TOKEN')
-bot = TeleBot(token, parse_mode=None, threaded=False)
+API_TOKEN = os.environ.get('BOT_TOKEN')
+bot = TeleBot(API_TOKEN, parse_mode=None, threaded=False)
 ondrv = OneDrive()
-sqlite = SQLite()
+mongo = Mongo()
 
 S_SEND_LINK = 'Send link to photos.'
 send_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 send_markup.add(types.KeyboardButton(S_SEND_LINK))
 
-current_mg_id = None
-ondrv_folder = None
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -40,7 +39,7 @@ def start(message):
     elif message.chat.type == "group":
         logger.info('Group message.')
 
-        res = sqlite.add_user_chat(
+        res = mongo.add_user_chat(
             message.from_user.id,
             message.chat.id,
             message.chat.title
@@ -62,7 +61,7 @@ def stop(message):
     logger.info('Stop function.')
     if message.chat.type == "group":
 
-        res = sqlite.delete_chat(
+        res = mongo.delete_chat(
             message.from_user.id,
             message.chat.id
         )
@@ -82,7 +81,7 @@ def stop(message):
 def query_text(query):
     if query.data.split('_')[0] == 'refresh':
         _, link_id = query.data.split('_')
-        new_keyboard = create_keyboard(sqlite, query.from_user.id, link_id)
+        new_keyboard = create_keyboard(mongo, query.from_user.id, link_id)
         try:
             bot.edit_message_reply_markup(
                 chat_id=query.message.chat.id,
@@ -94,7 +93,7 @@ def query_text(query):
 
     else:
         chat_id, link_id = query.data.split('_')
-        link = sqlite.get_link(link_id)
+        link = mongo.get_link(link_id)
         bot.send_message(chat_id, link)
 
 
@@ -113,10 +112,10 @@ def file_downloader(messages):
                     ondrv_folder = ondrv.create_folder(
                         ONEDRIVE_USER, ONEDRIVE_FOLDER, folder_name)
                     link = ondrv.create_link(ONEDRIVE_USER, ondrv_folder)
-                    link_id = sqlite.add_user_link(link)
+                    link_id = mongo.add_user_link(link)
 
                     test_markup = create_keyboard(
-                        sqlite, message.from_user.id, link_id)
+                        mongo, message.from_user.id, link_id)
                     reply_msg = "Please, click button to send link to corresponding chat.\n"
                     reply_msg += "Click refresh button if you activated bot in new chats"
 
@@ -129,10 +128,10 @@ def file_downloader(messages):
                     f_info = bot.get_file(message.json['photo'][-1]['file_id'])
                     f_info_name = ntpath.basename(f_info.file_path)
                     f_ext = f_info_name.split('.')[1]
-                    f_title = f"{int(time())}_{f_info_name.split('.')[0]}"
+                    f_title = f"{int(time.time())}_{f_info_name.split('.')[0]}"
                     f_name = f"{f_title}.{f_ext}"
 
-                    f = save_from_tg(token, f_info)
+                    f = save_from_tg(API_TOKEN, f_info)
                     ondrv.upload_file(
                         ONEDRIVE_USER,
                         ondrv_folder,
@@ -147,7 +146,7 @@ def file_downloader(messages):
                     f_info = bot.get_file(message.document.file_id)
                     f_name = message.document.file_name
 
-                    f = save_from_tg(token, f_info)
+                    f = save_from_tg(API_TOKEN, f_info)
                     ondrv.upload_file(
                         ONEDRIVE_USER,
                         ondrv_folder,
@@ -158,6 +157,16 @@ def file_downloader(messages):
                     logger.info('Document message processed.')
 
 
-logger.info('Bot successfully started.')
 bot.set_update_listener(file_downloader)
-bot.polling()
+
+
+def main(request):
+    json_string = request.get_json()
+    update = types.Update.de_json(json_string)
+
+    bot.process_new_updates([update])
+    return ''
+
+
+if __name__ == "__main__":
+    main()
